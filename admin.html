@@ -113,6 +113,30 @@ const $=id=>document.getElementById(id);
 const esc=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
 function fmtDate(v){return v?String(v).slice(0,10):"-"}
 function money(v){return Number(v||0).toLocaleString("ko-KR")+"원"}
+function customerLink(j){
+  return `${location.origin}/?token=${encodeURIComponent(j.public_token)}`;
+}
+async function copyCustomerLink(id){
+  const j=allJobs.find(x=>x.id===id);
+  if(!j || !j.public_token){alert("고객 링크가 없습니다.");return}
+  const link=customerLink(j);
+  try{
+    await navigator.clipboard.writeText(link);
+    alert("고객 전송용 링크가 복사되었습니다.\n\n문자나 카카오톡에 붙여넣어 전송하세요.");
+  }catch(e){
+    const ta=document.createElement("textarea");
+    ta.value=link; document.body.appendChild(ta); ta.select();
+    document.execCommand("copy"); ta.remove();
+    alert("고객 전송용 링크가 복사되었습니다.");
+  }
+}
+function sendCustomerSms(id){
+  const j=allJobs.find(x=>x.id===id);
+  if(!j || !j.public_token){alert("고객 링크가 없습니다.");return}
+  const link=customerLink(j);
+  const text=`안녕하세요. 해피크린입니다.\n작업 결과 및 사진은 아래 링크에서 확인하실 수 있습니다.\n${link}`;
+  location.href=`sms:${(j.phone||"").replace(/[^0-9+]/g,"")}?body=${encodeURIComponent(text)}`;
+}
 
 async function requireAdmin(){
   const {data:{session:s}}=await sb.auth.getSession();
@@ -156,6 +180,10 @@ function renderJobs(){
       <div class="row">
         <button onclick="showDetail('${j.id}')">내용·사진 보기</button>
         <button class="secondary" onclick="editJob('${j.id}')">수정</button>
+      </div>
+      <div class="row">
+        <button class="success" onclick="copyCustomerLink('${j.id}')">고객 링크 복사</button>
+        <button class="secondary" onclick="sendCustomerSms('${j.id}')">문자로 보내기</button>
       </div>
       <button class="danger" onclick="deleteJob('${j.id}')">이 작업 전체 삭제</button>
     </div>`).join("") || "<div class='muted'>검색 결과가 없습니다.</div>";
@@ -203,6 +231,10 @@ window.showDetail=async id=>{
     <p><b>${esc(j.customer_name||"")}</b> · ${esc(fmtDate(j.work_date))}</p>
     <p class="muted">${esc(j.address||"")} ${esc(j.phone||"")}</p>
     <p>${esc(j.note||"")}</p>
+    <div class="row">
+      <button class="success" onclick="copyCustomerLink('${j.id}')">고객 전송용 링크 복사</button>
+      <button class="secondary" onclick="sendCustomerSms('${j.id}')">고객에게 문자 보내기</button>
+    </div>
     <div class="photo-grid">${imgs.map(x=>`<div><img src="${x.url}" alt=""><small>${esc(x.type)}</small></div>`).join("")||"<div class='muted'>사진 없음</div>"}</div>`;
   window.scrollTo({top:$("detailCard").offsetTop-70,behavior:"smooth"});
 };
