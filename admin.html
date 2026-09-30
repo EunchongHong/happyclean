@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>HAPPYCLEAN 관리자</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f3f4f6;color:#111;font-family:-apple-system,BlinkMacSystemFont,"Noto Sans KR",sans-serif}
+header{background:#111;color:#fff;padding:16px;position:sticky;top:0;z-index:20}
+.wrap{max-width:900px;margin:auto;padding:14px}
+.card{background:#fff;border-radius:15px;padding:16px;margin:12px 0;box-shadow:0 2px 8px #0000000d}
+h1,h2,h3{margin:3px 0 12px}
+.muted{color:#777;font-size:13px}
+input,select,textarea,button{width:100%;font:inherit;padding:12px;border-radius:10px;border:1px solid #ddd;margin:5px 0}
+textarea{min-height:90px;resize:vertical}
+button{background:#111;color:#fff;border:0;font-weight:700;cursor:pointer}
+button:disabled{opacity:.5}
+.danger{background:#b42318}.secondary{background:#eee;color:#111}.success{background:#16794b}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.job{border:1px solid #e3e3e3;border-radius:12px;padding:13px;margin:9px 0;background:#fff}
+.job strong{display:block;font-size:16px;margin-bottom:5px}
+.badge{display:inline-block;padding:4px 8px;border-radius:99px;background:#eee;font-size:12px;margin:2px}
+.photo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:10px}
+.photo-grid img{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:9px;background:#eee}
+.hidden{display:none!important}
+.notice{padding:12px;border-radius:10px;background:#fff8e1;color:#795b00;font-size:13px}
+#login{max-width:430px;margin:70px auto}
+@media(max-width:600px){.row{grid-template-columns:1fr}.photo-grid{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap" style="padding:0">
+    <strong>HAPPYCLEAN 관리자</strong>
+    <span id="userLabel" style="float:right;font-size:12px;opacity:.8"></span>
+  </div>
+</header>
+
+<div class="wrap">
+  <section id="login" class="card">
+    <h2>관리자 로그인</h2>
+    <p class="muted">관리자 계정으로 로그인하면 작업이력을 조회·수정·삭제할 수 있습니다.</p>
+    <input id="email" type="email" placeholder="관리자 이메일" autocomplete="username">
+    <input id="password" type="password" placeholder="비밀번호" autocomplete="current-password">
+    <button id="loginBtn">로그인</button>
+    <div id="loginMsg" class="muted"></div>
+  </section>
+
+  <main id="app" class="hidden">
+    <section class="card">
+      <div class="row">
+        <input id="search" placeholder="고객명 / 주소 / 전화번호 / 모델 검색">
+        <button class="secondary" id="refreshBtn">새로고침</button>
+      </div>
+      <div class="notice">관리자 계정: ghd1930@gmail.com</div>
+    </section>
+
+    <section class="card">
+      <h2>작업이력</h2>
+      <div id="count" class="muted"></div>
+      <div id="jobs"></div>
+    </section>
+
+    <section id="editCard" class="card hidden">
+      <h2>작업 수정</h2>
+      <input id="editId" type="hidden">
+      <div class="row">
+        <label>작업일<input id="editDate" type="date"></label>
+        <label>고객명<input id="editCustomer"></label>
+      </div>
+      <div class="row">
+        <label>전화번호<input id="editPhone"></label>
+        <label>수량<input id="editQty" type="number" min="1"></label>
+      </div>
+      <label>주소<input id="editAddress"></label>
+      <div class="row">
+        <label>에어컨 종류<input id="editAcType"></label>
+        <label>제조사<input id="editMaker"></label>
+      </div>
+      <div class="row">
+        <label>모델<input id="editModel"></label>
+        <label>금액<input id="editPrice" type="number" min="0"></label>
+      </div>
+      <label>결제<input id="editPayment"></label>
+      <label>메모<textarea id="editNote"></textarea></label>
+      <div class="row">
+        <button id="saveEdit" class="success">수정 저장</button>
+        <button id="cancelEdit" class="secondary">취소</button>
+      </div>
+    </section>
+
+    <section id="detailCard" class="card hidden">
+      <h2>작업 상세</h2>
+      <div id="detail"></div>
+    </section>
+
+    <button id="logoutBtn" class="secondary">로그아웃</button>
+  </main>
+</div>
+
+<script>
+const SUPABASE_URL="https://lltfyjixbdnulfkrzanu.supabase.co";
+const SUPABASE_KEY="sb_publishable_8mfh36Ulp8kCQtdM7fLfUA_IpszyJXD";
+const BUCKET="happyclean-photos";
+const ADMIN="ghd1930@gmail.com";
+const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+let session=null;
+let allJobs=[];
+
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
+function fmtDate(v){return v?String(v).slice(0,10):"-"}
+function money(v){return Number(v||0).toLocaleString("ko-KR")+"원"}
+
+async function requireAdmin(){
+  const {data:{session:s}}=await sb.auth.getSession();
+  session=s;
+  if(!s || s.user.email?.toLowerCase()!==ADMIN){
+    $("login").classList.remove("hidden"); $("app").classList.add("hidden"); return false;
+  }
+  $("login").classList.add("hidden"); $("app").classList.remove("hidden");
+  $("userLabel").textContent=s.user.email;
+  return true;
+}
+
+$("loginBtn").onclick=async()=>{
+  $("loginMsg").textContent="로그인 중...";
+  const {error}=await sb.auth.signInWithPassword({email:$("email").value.trim(),password:$("password").value});
+  if(error){$("loginMsg").textContent=error.message;return}
+  if(await requireAdmin()) await loadJobs();
+};
+
+async function loadJobs(){
+  $("jobs").innerHTML="<div class='muted'>불러오는 중...</div>";
+  const {data,error}=await sb.from("jobs").select("*").order("work_date",{ascending:false}).order("created_at",{ascending:false});
+  if(error){$("jobs").innerHTML="<div class='muted'>불러오기 실패: "+esc(error.message)+"</div>";return}
+  allJobs=data||[];
+  renderJobs();
+}
+
+function renderJobs(){
+  const q=$("search").value.trim().toLowerCase();
+  const filtered=allJobs.filter(j=>[j.customer_name,j.address,j.phone,j.model,j.maker,j.ac_type,j.note].some(v=>String(v||"").toLowerCase().includes(q)));
+  $("count").textContent=`총 ${filtered.length}건`;
+  $("jobs").innerHTML=filtered.map(j=>`
+    <div class="job">
+      <strong>${esc(j.customer_name||"고객명 없음")}</strong>
+      <div class="muted">${esc(fmtDate(j.work_date))} · ${esc(j.ac_type||"-")} · ${esc(j.maker||"-")} ${esc(j.model||"")}</div>
+      <div style="margin:6px 0">
+        <span class="badge">${esc(j.address||"주소 없음")}</span>
+        <span class="badge">${esc(j.qty||1)}대</span>
+        <span class="badge">${money(j.price)}</span>
+      </div>
+      <div class="row">
+        <button onclick="showDetail('${j.id}')">내용·사진 보기</button>
+        <button class="secondary" onclick="editJob('${j.id}')">수정</button>
+      </div>
+      <button class="danger" onclick="deleteJob('${j.id}')">이 작업 전체 삭제</button>
+    </div>`).join("") || "<div class='muted'>검색 결과가 없습니다.</div>";
+}
+
+$("search").oninput=renderJobs;
+$("refreshBtn").onclick=loadJobs;
+
+window.editJob=id=>{
+  const j=allJobs.find(x=>x.id===id); if(!j)return;
+  $("editId").value=j.id;$("editDate").value=fmtDate(j.work_date);$("editCustomer").value=j.customer_name||"";
+  $("editPhone").value=j.phone||"";$("editQty").value=j.qty||1;$("editAddress").value=j.address||"";
+  $("editAcType").value=j.ac_type||"";$("editMaker").value=j.maker||"";$("editModel").value=j.model||"";
+  $("editPrice").value=j.price||0;$("editPayment").value=j.payment||"";$("editNote").value=j.note||"";
+  $("editCard").classList.remove("hidden"); window.scrollTo({top:$("editCard").offsetTop-70,behavior:"smooth"});
+};
+
+$("cancelEdit").onclick=()=>$("editCard").classList.add("hidden");
+
+$("saveEdit").onclick=async()=>{
+  if(!session || session.user.email?.toLowerCase()!==ADMIN)return alert("관리자만 수정할 수 있습니다.");
+  const id=$("editId").value;
+  const payload={work_date:$("editDate").value,customer_name:$("editCustomer").value.trim(),phone:$("editPhone").value.trim(),
+    qty:Math.max(1,Number($("editQty").value||1)),address:$("editAddress").value.trim(),ac_type:$("editAcType").value.trim(),
+    maker:$("editMaker").value.trim(),model:$("editModel").value.trim(),price:Math.max(0,Number($("editPrice").value||0)),
+    payment:$("editPayment").value.trim(),note:$("editNote").value.trim()};
+  const {error}=await sb.from("jobs").update(payload).eq("id",id);
+  if(error){alert("수정 실패: "+error.message);return}
+  alert("수정되었습니다.");
+  $("editCard").classList.add("hidden"); await loadJobs(); await showDetail(id);
+};
+
+window.showDetail=async id=>{
+  const j=allJobs.find(x=>x.id===id); if(!j)return;
+  $("detailCard").classList.remove("hidden");
+  $("detail").innerHTML="<div class='muted'>사진 불러오는 중...</div>";
+  const {data:photos,error}=await sb.from("job_photos").select("*").eq("job_id",id).order("photo_type").order("sort_order");
+  if(error){$("detail").innerHTML=esc(error.message);return}
+  const imgs=[];
+  for(const p of photos||[]){
+    const {data}=await sb.storage.from(BUCKET).createSignedUrl(p.storage_path,600);
+    if(data?.signedUrl) imgs.push({url:data.signedUrl,type:p.photo_type,id:p.id,path:p.storage_path});
+  }
+  $("detail").innerHTML=`
+    <p><b>${esc(j.customer_name||"")}</b> · ${esc(fmtDate(j.work_date))}</p>
+    <p class="muted">${esc(j.address||"")} ${esc(j.phone||"")}</p>
+    <p>${esc(j.note||"")}</p>
+    <div class="photo-grid">${imgs.map(x=>`<div><img src="${x.url}" alt=""><small>${esc(x.type)}</small></div>`).join("")||"<div class='muted'>사진 없음</div>"}</div>`;
+  window.scrollTo({top:$("detailCard").offsetTop-70,behavior:"smooth"});
+};
+
+window.deleteJob=async id=>{
+  if(!session || session.user.email?.toLowerCase()!==ADMIN)return alert("관리자만 삭제할 수 있습니다.");
+  const j=allJobs.find(x=>x.id===id); if(!j)return;
+  if(!confirm(`"${j.customer_name||"이 작업"}"의 작업과 사진을 전체 삭제하시겠습니까?\n삭제 후 복구할 수 없습니다.`))return;
+  const {data:photos,error:pe}=await sb.from("job_photos").select("storage_path").eq("job_id",id);
+  if(pe){alert("사진 목록 확인 실패: "+pe.message);return}
+  const paths=(photos||[]).map(x=>x.storage_path);
+  if(paths.length) await sb.storage.from(BUCKET).remove(paths);
+  const {error:e1}=await sb.from("job_photos").delete().eq("job_id",id);
+  if(e1){alert("사진 데이터 삭제 실패: "+e1.message);return}
+  const {error:e2}=await sb.from("jobs").delete().eq("id",id);
+  if(e2){alert("작업 삭제 실패: "+e2.message);return}
+  $("detailCard").classList.add("hidden"); $("editCard").classList.add("hidden");
+  await loadJobs(); alert("삭제되었습니다.");
+};
+
+$("logoutBtn").onclick=async()=>{await sb.auth.signOut();location.reload()};
+sb.auth.onAuthStateChange(()=>setTimeout(requireAdmin,0));
+requireAdmin().then(ok=>{if(ok)loadJobs()});
+</script>
+</body>
+</html>
