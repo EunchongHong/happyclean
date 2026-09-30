@@ -94,12 +94,12 @@ button.danger{background:#b42318;color:#fff}
 
     <label>작업 전 사진</label>
     <div class="muted">사진은 0장도 가능하며, 추가 선택하면 기존 선택에 계속 추가됩니다.</div>
-    <input id="before" type="file" accept="image/*" capture="environment" multiple>
+    <button type="button" class="secondary" onclick="openPhotoChoice('before')">사진 추가</button><input id="beforeCamera" type="file" accept="image/*" capture="environment" hidden><input id="beforeGallery" type="file" accept="image/*" multiple hidden>
     <div id="beforePrev" class="photos"></div>
 
     <label>작업 후 사진</label>
     <div class="muted">사진은 0장도 가능하며, 추가 선택하면 기존 선택에 계속 추가됩니다.</div>
-    <input id="after" type="file" accept="image/*" capture="environment" multiple>
+    <button type="button" class="secondary" onclick="openPhotoChoice('after')">사진 추가</button><input id="afterCamera" type="file" accept="image/*" capture="environment" hidden><input id="afterGallery" type="file" accept="image/*" multiple hidden>
     <div id="afterPrev" class="photos"></div>
 
     <button id="saveBtn" onclick="saveJob()">작업 저장</button>
@@ -122,7 +122,7 @@ const BUCKET="happyclean-photos";
 const ADMIN_EMAIL="ghd1930@gmail.com";
 const $=id=>document.getElementById(id);
 window.tempLogin=false;
-let beforeFiles=[],afterFiles=[];
+let beforeFiles=[],afterFiles=[],photoChoiceType=null;
 
 function localDate(){
   const d=new Date(),off=d.getTimezoneOffset();
@@ -167,8 +167,11 @@ function renderPhotos(type,box){
 
 $("date").value=localDate();
 $("date").onchange=applyDateRule;
-$("before").onchange=()=>addFiles($("before"),"before",$("beforePrev"));
-$("after").onchange=()=>addFiles($("after"),"after",$("afterPrev"));
+function openPhotoChoice(type){photoChoiceType=type;const camera=confirm("카메라로 바로 촬영하시겠습니까?\n\n확인: 카메라 / 취소: 사진첩");const input=$(type+(camera?"Camera":"Gallery"));input.click();}
+$("beforeCamera").onchange=()=>addFiles($("beforeCamera"),"before",$("beforePrev"));
+$("beforeGallery").onchange=()=>addFiles($("beforeGallery"),"before",$("beforePrev"));
+$("afterCamera").onchange=()=>addFiles($("afterCamera"),"after",$("afterPrev"));
+$("afterGallery").onchange=()=>addFiles($("afterGallery"),"after",$("afterPrev"));
 applyDateRule();
 
 async function login(){
@@ -268,7 +271,7 @@ async function saveJob(){
   $("saveMsg").innerHTML+=`<div class="linkBox" style="margin-top:8px">${esc(link)}</div>`;
   $("saveMsg").innerHTML+=`<button class="secondary" style="margin-top:8px" onclick="copyText(${JSON.stringify(link)})">고객 링크 복사</button>`;
   beforeFiles=[];afterFiles=[];$("beforePrev").innerHTML="";$("afterPrev").innerHTML="";
-  $("before").value="";$("after").value="";
+  $("beforeCamera").value="";$("beforeGallery").value="";$("afterCamera").value="";$("afterGallery").value="";
   btn.disabled=false;btn.textContent="작업 저장";
   if(session)loadJobs();
 }
