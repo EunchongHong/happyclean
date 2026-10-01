@@ -128,7 +128,7 @@ function localDate(){
   const d=new Date(),off=d.getTimezoneOffset();
   return new Date(d.getTime()-off*60000).toISOString().slice(0,10);
 }
-function requiresLogin(){return localDate()>="2026-10-02";}
+function requiresLogin(){return localDate()>="2026-10-03";}
 function esc(s){
   return String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
 }
