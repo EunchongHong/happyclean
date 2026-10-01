@@ -108,6 +108,7 @@ const ADMIN="ghd1930@gmail.com";
 const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 let session=null;
 let allJobs=[];
+let photoCounts={};
 
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
@@ -156,11 +157,26 @@ $("loginBtn").onclick=async()=>{
   if(await requireAdmin()) await loadJobs();
 };
 
+async function loadPhotoCounts(jobIds){
+  photoCounts={};
+  if(!jobIds.length)return;
+  const {data,error}=await sb.from("job_photos").select("job_id,photo_type").in("job_id",jobIds);
+  if(error)return;
+  for(const p of (data||[])){
+    if(!photoCounts[p.job_id])photoCounts[p.job_id]={total:0,before:0,after:0,extra:0};
+    photoCounts[p.job_id].total++;
+    if(p.photo_type==="before")photoCounts[p.job_id].before++;
+    else if(p.photo_type==="after")photoCounts[p.job_id].after++;
+    else photoCounts[p.job_id].extra++;
+  }
+}
+
 async function loadJobs(){
   $("jobs").innerHTML="<div class='muted'>불러오는 중...</div>";
   const {data,error}=await sb.from("jobs").select("*").order("work_date",{ascending:false}).order("created_at",{ascending:false});
   if(error){$("jobs").innerHTML="<div class='muted'>불러오기 실패: "+esc(error.message)+"</div>";return}
   allJobs=data||[];
+  await loadPhotoCounts(allJobs.map(j=>j.id));
   renderJobs();
 }
 
@@ -176,6 +192,12 @@ function renderJobs(){
         <span class="badge">${esc(j.address||"주소 없음")}</span>
         <span class="badge">${esc(j.qty||1)}대</span>
         <span class="badge">${money(j.price)}</span>
+      </div>
+      <div style="margin:7px 0">
+        <span class="badge">사진 총 ${photoCounts[j.id]?.total||0}장</span>
+        <span class="badge">작업 전 ${photoCounts[j.id]?.before||0}장</span>
+        <span class="badge">작업 후 ${photoCounts[j.id]?.after||0}장</span>
+        ${(photoCounts[j.id]?.extra||0)>0?`<span class="badge">추가 ${photoCounts[j.id].extra}장</span>`:""}
       </div>
       <div class="row">
         <button onclick="showDetail('${j.id}')">내용·사진 보기</button>
@@ -235,6 +257,7 @@ window.showDetail=async id=>{
       <button class="success" onclick="copyCustomerLink('${j.id}')">고객 전송용 링크 복사</button>
       <button class="secondary" onclick="sendCustomerSms('${j.id}')">고객에게 문자 보내기</button>
     </div>
+    <button class="danger" onclick="deleteJob('${j.id}')">이 작업 전체 삭제</button>
     <div class="photo-grid">${imgs.map(x=>`<div><img src="${x.url}" alt=""><small>${esc(x.type)}</small></div>`).join("")||"<div class='muted'>사진 없음</div>"}</div>`;
   window.scrollTo({top:$("detailCard").offsetTop-70,behavior:"smooth"});
 };
